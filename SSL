@@ -1,0 +1,69 @@
+import torch
+import torchvision.transforms as transforms
+from torchvision.datasets import CIFAR10
+from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+
+# Define a simple CNN for rotation prediction
+class RotationPredictor(nn.Module):
+    def __init__(self):
+        super(RotationPredictor, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.fc1 = nn.Linear(32 * 8 * 8, 256)
+        self.fc2 = nn.Linear(256, 4)  # 4 possible rotations: 0, 90, 180, 270 degrees
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, 2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, 2)
+        x = x.view(-1, 32 * 8 * 8)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+# Pretext task: Rotation prediction
+def rotate_image(image, angle):
+    return transforms.functional.rotate(image, angle.item() * 90)
+
+# Hyperparameters (Change to alter the results of the training)
+batch_size = 32
+learning_rate = 0.001
+num_epochs = 5
+
+# Load CIFAR-10 dataset
+transform = transforms.Compose([
+    transforms.RandomRotation(degrees=[0, 270]),  # Random rotation for pretext task
+    transforms.ToTensor()
+])
+
+train_dataset = CIFAR10(root='./data', train=True, download=True, transform=transform)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+# Initialize model, loss function, and optimizer
+model = RotationPredictor()
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+# Training loop
+for epoch in range(num_epochs):
+    total_loss = 0
+    for images, _ in train_loader:
+        angles = torch.randint(0, 4, (images.size(0),))  # Randomly generate rotation angles
+        rotated_images = torch.stack([rotate_image(image, angle*90) for image, angle in zip(images, angles)])
+        
+        optimizer.zero_grad()
+        outputs = model(rotated_images)
+        loss = criterion(outputs, angles)
+        loss.backward()
+        optimizer.step()
+        
+        total_loss += loss.item()
+    
+    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(train_loader):.4f}")
+
+# After training, fine-tune the model on downstream task
+# E.g., classification using labeled data
