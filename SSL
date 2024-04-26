@@ -64,6 +64,3 @@ for epoch in range(num_epochs):
         total_loss += loss.item()
     
     print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(train_loader):.4f}")
-
-# After training, fine-tune the model on downstream task
-# E.g., classification using labeled data
